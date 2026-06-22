@@ -4,85 +4,111 @@ const cors = require("cors");
 const app = express();
 app.use(cors());
 
-let cachedMatch = null;
-let lastUpdate = 0;
+const LIVE_URL =
+  "https://api.sofascore.com/api/v1/sport/football/events/live";
 
-async function fetchSofascore() {
-  const [liveRes, todayRes] = await Promise.all([
-    fetch("https://api.sofascore.com/api/v1/sport/football/events/live", {
-      headers: { "User-Agent": "Mozilla/5.0" }
-    }),
-    fetch("https://api.sofascore.com/api/v1/sport/football/scheduled-events/2026-06-22", {
-      headers: { "User-Agent": "Mozilla/5.0" }
-    })
+const TODAY_URL =
+  "https://api.sofascore.com/api/v1/sport/football/scheduled-events/2026-06-22";
+
+let cache = null;
+let cacheTime = 0;
+
+// ----------------------
+// FETCH SOFASCORE DATA
+// ----------------------
+async function fetchData(url) {
+  const res = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0" }
+  });
+  return res.json();
+}
+
+// ----------------------
+// MAIN DATA PIPELINE
+// ----------------------
+async function getMatches() {
+  const [live, today] = await Promise.all([
+    fetchData(LIVE_URL),
+    fetchData(TODAY_URL)
   ]);
 
-  const liveData = await liveRes.json();
-  const todayData = await todayRes.json();
-
   return [
-    ...(liveData.events || []),
-    ...(todayData.events || [])
+    ...(live.events || []),
+    ...(today.events || [])
   ];
 }
 
+// ----------------------
+// MATCH SELECTOR (BROADCAST LOGIC)
+// ----------------------
+function pickMatch(events) {
+  const football = events.filter(
+    e => e.sport?.name === "Football"
+  );
+
+  if (!football.length) return null;
+
+  // 1. LIVE FIRST
+  const liveMatch = football.find(
+    e => e.status?.type === "inprogress"
+  );
+
+  if (liveMatch) return liveMatch;
+
+  // 2. UPCOMING MATCHES
+  const upcoming = football.find(
+    e => e.status?.type === "notstarted"
+  );
+
+  if (upcoming) return upcoming;
+
+  // 3. FALLBACK
+  return football[0];
+}
+
+// ----------------------
+// FORMAT RESPONSE
+// ----------------------
+function formatMatch(match) {
+  if (!match) {
+    return {
+      home: "No Match Available",
+      away: "",
+      homeScore: "",
+      awayScore: "",
+      status: "STANDBY",
+      utcDate: new Date().toISOString()
+    };
+  }
+
+  return {
+    home: match.homeTeam?.name || "—",
+    away: match.awayTeam?.name || "—",
+    homeScore: match.homeScore?.current ?? 0,
+    awayScore: match.awayScore?.current ?? 0,
+    status: match.status?.type || "UNKNOWN",
+    utcDate: match.utcDate || new Date().toISOString()
+  };
+}
+
+// ----------------------
+// API ROUTE
+// ----------------------
 app.get("/auto-match", async (req, res) => {
   try {
     const now = Date.now();
 
-    // 🧠 cache
-    if (cachedMatch && now - lastUpdate < 15000) {
-      return res.json(cachedMatch);
+    // cache (15s)
+    if (cache && now - cacheTime < 15000) {
+      return res.json(cache);
     }
 
-    const events = await fetchSofascore();
+    const events = await getMatches();
+    const match = pickMatch(events);
+    const payload = formatMatch(match);
 
-    if (!events.length) {
-      return res.json({
-        home: "—",
-        away: "—",
-        homeScore: 0,
-        awayScore: 0,
-        status: "NO LIVE MATCH",
-        utcDate: new Date().toISOString()
-      });
-    }
-
-    // ⚽ filter football only
-    const footballMatches = events.filter(e =>
-      e.sport?.name === "Football"
-    );
-
-    // 🎯 prioritize live matches
-    const match =
-      footballMatches.find(e =>
-        e.status?.type === "inprogress" ||
-        e.status?.type === "live"
-      ) ||
-      footballMatches[0];
-
-    if (!match) {
-      return res.json({
-        home: "—",
-        away: "—",
-        homeScore: 0,
-        awayScore: 0,
-        status: "NO MATCH FOUND",
-        utcDate: new Date().toISOString()
-      });
-    }
-
-    const payload = {
-      home: match.homeTeam?.name || "—",
-      away: match.awayTeam?.name || "—",
-      homeScore: match.homeScore?.current ?? 0,
-      awayScore: match.awayScore?.current ?? 0,
-      status: match.status?.type || "LIVE",
-      utcDate: match.utcDate || new Date().toISOString()
-    };
-
-    cachedMatch = payload;
-    lastUpdate = now;
+    cache = payload;
+    cacheTime = now;
 
     res.json(payload);
 
@@ -90,14 +116,15 @@ app.get("/auto-match", async (req, res) => {
     res.json({
       home: "—",
       away: "—",
-      homeScore: 0,
-      awayScore: 0,
+      homeScore: "",
+      awayScore: "",
       status: "ERROR",
       utcDate: new Date().toISOString()
     });
   }
 });
 
+// ----------------------
 app.listen(3000, () => {
-  console.log("🔥 Sofascore server running on http://localhost:3000");
+  console.log("🔥 BROADCAST ENGINE RUNNING: http://localhost:3000");
 });
