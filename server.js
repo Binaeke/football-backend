@@ -50,7 +50,7 @@ async function getMatches() {
 }
 
 // -------------------
-// BIG MATCH PRIORITY (ESPN+ FEATURE)
+// BIG MATCH PRIORITY (CW+ FEATURE)
 // -------------------
 const PRIORITY_TEAMS = [
   "France",
@@ -81,7 +81,7 @@ function teamScore(match) {
 }
 
 // -------------------
-// SELECT MATCH (ESPN+ ENGINE)
+// SELECT MATCH (CW+ ENGINE)
 // -------------------
 function selectMatch(events) {
   const football = events.filter(e => e.sport?.name === "Football");
@@ -146,7 +146,7 @@ function getMatchMinute(utcDate) {
 function format(match) {
   if (!match) {
     return {
-      home: "ESPN+",
+      home: "CW+",
       away: "NO MATCH",
       homeScore: "",
       awayScore: "",
@@ -198,7 +198,7 @@ app.get("/auto-match", async (req, res) => {
     res.json(payload);
   } catch (err) {
     res.json({
-      home: "ESPN+",
+      home: "CW+",
       away: "ERROR",
       homeScore: "",
       awayScore: "",
@@ -211,5 +211,5 @@ app.get("/auto-match", async (req, res) => {
 
 // -------------------
 app.listen(3000, () => {
-  console.log("🔥 ESPN+ BROADCAST ENGINE RUNNING");
+  console.log("🔥 CW+ BROADCAST ENGINE RUNNING");
 });
