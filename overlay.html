@@ -134,8 +134,8 @@ function applyData(m) {
   document.getElementById("away").innerText = m.away ?? "—";
   document.getElementById("status").innerText = m.status ?? "LOADING";
 
-  const homeScore = (m.homeScore ?? 0);
-  const awayScore = (m.awayScore ?? 0);
+  const homeScore = m.homeScore ?? 0;
+  const awayScore = m.awayScore ?? 0;
 
   const score = `${homeScore} - ${awayScore}`;
   document.getElementById("score").innerText = score;
@@ -149,19 +149,23 @@ function applyData(m) {
 
   lastScore = score;
 
-  /* ⏱️ CLOCK */
+  /* ⏱️ CLOCK (API-FOOTBALL FIXED STATUS) */
   const kickoff = new Date(m.utcDate);
 
-  if (m.status === "LIVE" || m.status === "IN_PLAY") {
+  const liveStates = ["1H", "2H", "HT", "LIVE"];
+
+  if (liveStates.includes(m.status)) {
     updateClock(kickoff);
-  } else if (m.status === "FINISHED") {
+  } 
+  else if (m.status === "FT" || m.status === "FINISHED") {
     document.getElementById("clock").innerText = "FT";
-  } else {
+  } 
+  else {
     document.getElementById("clock").innerText = "0'";
   }
 }
 
-/* 🔄 SAFE FETCH LOOP (NO FLICKER / NO RACE CONDITION) */
+/* 🔄 SAFE FETCH LOOP (ANTI-FLICKER SYSTEM) */
 async function loadMatch() {
   if (isUpdating) return;
   isUpdating = true;

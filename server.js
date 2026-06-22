@@ -4,7 +4,7 @@ const cors = require("cors");
 const app = express();
 app.use(cors());
 
-const API_KEY = "YOUR_API_FOOTBALL_KEY";
+const API_KEY = "1df1eebb1229b56f24ffd0cee4ad12f1";
 
 // ⚽ Stable fetch
 async function apiFetch(url) {
@@ -21,40 +21,47 @@ async function apiFetch(url) {
  */
 app.get("/auto-match", async (req, res) => {
   try {
-    const data = await apiFetch("https://v3.football.api-sports.io/fixtures?live=all");
+    // 1. LIVE matches
+    const liveRes = await apiFetch("https://v3.football.api-sports.io/fixtures?live=all");
+    let matches = liveRes.response || [];
 
-    const matches = data.response || [];
+    // 2. fallback: today's matches if no live
+    if (!matches.length) {
+      const today = new Date().toISOString().split("T")[0];
 
+      const todayRes = await apiFetch(
+        `https://v3.football.api-sports.io/fixtures?date=${today}`
+      );
+
+      matches = todayRes.response || [];
+    }
+
+    // 3. fallback hardcoded empty safe state
     if (!matches.length) {
       return res.json({
         home: "—",
         away: "—",
         homeScore: 0,
         awayScore: 0,
-        status: "NO LIVE MATCH",
+        status: "NO MATCH",
         utcDate: new Date().toISOString()
       });
     }
 
-    // 🧠 Pick match: Argentina first, otherwise first live match
+    // 4. pick match (Argentina priority)
     let match =
       matches.find(m =>
         m.teams.home.name.toLowerCase().includes("argentina") ||
         m.teams.away.name.toLowerCase().includes("argentina")
       ) || matches[0];
 
-    const fixture = match.fixture;
-    const goals = match.goals;
-
     res.json({
       home: match.teams.home.name,
       away: match.teams.away.name,
-
-      homeScore: goals.home ?? 0,
-      awayScore: goals.away ?? 0,
-
+      homeScore: match.goals.home ?? 0,
+      awayScore: match.goals.away ?? 0,
       status: match.fixture.status.short,
-      utcDate: fixture.date
+      utcDate: match.fixture.date
     });
 
   } catch (err) {
