@@ -4,33 +4,38 @@ const cors = require("cors");
 const app = express();
 app.use(cors());
 
-const LIVE_URL =
-  "https://api.sofascore.com/api/v1/sport/football/events/live";
-
 let cachedMatch = null;
 let lastUpdate = 0;
 
 async function fetchSofascore() {
-  const res = await fetch(LIVE_URL, {
-    headers: {
-      "User-Agent": "Mozilla/5.0"
-    }
-  });
+  const [liveRes, todayRes] = await Promise.all([
+    fetch("https://api.sofascore.com/api/v1/sport/football/events/live", {
+      headers: { "User-Agent": "Mozilla/5.0" }
+    }),
+    fetch("https://api.sofascore.com/api/v1/sport/football/scheduled-events/2026-06-22", {
+      headers: { "User-Agent": "Mozilla/5.0" }
+    })
+  ]);
 
-  return res.json();
+  const liveData = await liveRes.json();
+  const todayData = await todayRes.json();
+
+  return [
+    ...(liveData.events || []),
+    ...(todayData.events || [])
+  ];
 }
 
 app.get("/auto-match", async (req, res) => {
   try {
     const now = Date.now();
 
-    // 🧠 cache (prevents spam)
+    // 🧠 cache
     if (cachedMatch && now - lastUpdate < 15000) {
       return res.json(cachedMatch);
     }
 
-    const data = await fetchSofascore();
-    const events = data?.events || [];
+    const events = await fetchSofascore();
 
     if (!events.length) {
       return res.json({
@@ -48,6 +53,7 @@ app.get("/auto-match", async (req, res) => {
       e.sport?.name === "Football"
     );
 
+    // 🎯 prioritize live matches
     const match =
       footballMatches.find(e =>
         e.status?.type === "inprogress" ||
@@ -55,7 +61,6 @@ app.get("/auto-match", async (req, res) => {
       ) ||
       footballMatches[0];
 
-    // ⚠️ safety check
     if (!match) {
       return res.json({
         home: "—",
@@ -67,7 +72,6 @@ app.get("/auto-match", async (req, res) => {
       });
     }
 
-    // ✅ BUILD RESPONSE (THIS WAS MISSING BEFORE)
     const payload = {
       home: match.homeTeam?.name || "—",
       away: match.awayTeam?.name || "—",
