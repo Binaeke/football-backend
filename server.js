@@ -5,7 +5,6 @@ const app = express();
 app.use(cors());
 
 const LIVE_URL =
-  
   "https://api.sofascore.com/api/v1/sport/football/events/live";
 
 let cachedMatch = null;
@@ -25,7 +24,7 @@ app.get("/auto-match", async (req, res) => {
   try {
     const now = Date.now();
 
-    // 🧠 cache (prevents rate issues)
+    // 🧠 cache (prevents spam)
     if (cachedMatch && now - lastUpdate < 15000) {
       return res.json(cachedMatch);
     }
@@ -44,15 +43,38 @@ app.get("/auto-match", async (req, res) => {
       });
     }
 
-    const match = events[0];
+    // ⚽ filter football only
+    const footballMatches = events.filter(e =>
+      e.sport?.name === "Football"
+    );
 
+    const match =
+      footballMatches.find(e =>
+        e.status?.type === "inprogress" ||
+        e.status?.type === "live"
+      ) ||
+      footballMatches[0];
+
+    // ⚠️ safety check
+    if (!match) {
+      return res.json({
+        home: "—",
+        away: "—",
+        homeScore: 0,
+        awayScore: 0,
+        status: "NO MATCH FOUND",
+        utcDate: new Date().toISOString()
+      });
+    }
+
+    // ✅ BUILD RESPONSE (THIS WAS MISSING BEFORE)
     const payload = {
       home: match.homeTeam?.name || "—",
       away: match.awayTeam?.name || "—",
       homeScore: match.homeScore?.current ?? 0,
       awayScore: match.awayScore?.current ?? 0,
       status: match.status?.type || "LIVE",
-      utcDate: new Date().toISOString()
+      utcDate: match.utcDate || new Date().toISOString()
     };
 
     cachedMatch = payload;
