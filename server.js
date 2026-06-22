@@ -88,9 +88,40 @@ function selectMatch(events) {
 
   if (!football.length) return null;
 
-  // sort by importance
-  football.sort((a, b) => teamScore(b) - teamScore(a));
+  // normalize status safely
+  const getStatus = (e) =>
+    e.status?.type ||
+    e.status?.description ||
+    e.status?.name ||
+    "";
 
+  // 🟢 LIVE detection (BROADER)
+  const live = football.find(e => {
+    const s = getStatus(e).toLowerCase();
+    return (
+      s.includes("live") ||
+      s.includes("inprogress") ||
+      s.includes("in_progress") ||
+      s.includes("1st") ||
+      s.includes("2nd")
+    );
+  });
+
+  if (live) return live;
+
+  // 🟡 UPCOMING
+  const upcoming = football.find(e => {
+    const s = getStatus(e).toLowerCase();
+    return (
+      s.includes("notstarted") ||
+      s.includes("scheduled") ||
+      s.includes("upcoming")
+    );
+  });
+
+  if (upcoming) return upcoming;
+
+  // 🔵 fallback to most relevant match
   return football[0];
 }
 
