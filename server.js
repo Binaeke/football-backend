@@ -25,18 +25,14 @@ app.get("/auto-match", async (req, res) => {
     const matches = data.matches;
 
     // 1. LIVE match first
-    let match =
-      matches.find(m => m.status === "LIVE") ||
-
-      // 2. else upcoming match
-      matches.find(m => m.status === "TIMED") ||
-
-      // 3. fallback
-      matches[0];
-
-    if (!match) {
-      return res.json({ error: "No matches found" });
-    }
+ let match =
+  matches.find(m =>
+    m.homeTeam?.name === "Argentina" ||
+    m.awayTeam?.name === "Argentina"
+  ) ||
+  matches.find(m => m.status === "LIVE") ||
+  matches.find(m => m.status === "TIMED") ||
+  matches[0];
 
    res.json({
   id: match.id,
