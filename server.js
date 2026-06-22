@@ -4,32 +4,36 @@ const cors = require("cors");
 const app = express();
 app.use(cors());
 
+// -------------------
+// SOFASCORE SOURCES
+// -------------------
 const LIVE_URL =
   "https://api.sofascore.com/api/v1/sport/football/events/live";
 
 const TODAY_URL =
   "https://api.sofascore.com/api/v1/sport/football/scheduled-events/2026-06-22";
 
+// -------------------
 let cache = null;
 let cacheTime = 0;
 
-// ----------------------
-// FETCH SOFASCORE DATA
-// ----------------------
-async function fetchData(url) {
+// -------------------
+// FETCH HELPERS
+// -------------------
+async function fetchJSON(url) {
   const res = await fetch(url, {
     headers: { "User-Agent": "Mozilla/5.0" }
   });
   return res.json();
 }
 
-// ----------------------
-// MAIN DATA PIPELINE
-// ----------------------
-async function getMatches() {
+// -------------------
+// GET ALL MATCHES
+// -------------------
+async function getAllMatches() {
   const [live, today] = await Promise.all([
-    fetchData(LIVE_URL),
-    fetchData(TODAY_URL)
+    fetchJSON(LIVE_URL),
+    fetchJSON(TODAY_URL)
   ]);
 
   return [
@@ -38,45 +42,43 @@ async function getMatches() {
   ];
 }
 
-// ----------------------
-// MATCH SELECTOR (BROADCAST LOGIC)
-// ----------------------
-function pickMatch(events) {
+// -------------------
+// ESPN MATCH SELECTOR
+// -------------------
+function selectMatch(events) {
   const football = events.filter(
     e => e.sport?.name === "Football"
   );
 
   if (!football.length) return null;
 
-  // 1. LIVE FIRST
-  const liveMatch = football.find(
+  // 🟢 LIVE FIRST
+  const live = football.find(
     e => e.status?.type === "inprogress"
   );
+  if (live) return live;
 
-  if (liveMatch) return liveMatch;
-
-  // 2. UPCOMING MATCHES
+  // 🟡 TODAY MATCHES
   const upcoming = football.find(
     e => e.status?.type === "notstarted"
   );
-
   if (upcoming) return upcoming;
 
-  // 3. FALLBACK
+  // 🔵 FALLBACK
   return football[0];
 }
 
-// ----------------------
-// FORMAT RESPONSE
-// ----------------------
-function formatMatch(match) {
+// -------------------
+// FORMAT ESPN RESPONSE
+// -------------------
+function format(match) {
   if (!match) {
     return {
-      home: "No Match Available",
-      away: "",
+      home: "ESPN LIVE",
+      away: "STANDBY",
       homeScore: "",
       awayScore: "",
-      status: "STANDBY",
+      status: "NO ACTIVE MATCH",
       utcDate: new Date().toISOString()
     };
   }
@@ -91,21 +93,22 @@ function formatMatch(match) {
   };
 }
 
-// ----------------------
-// API ROUTE
-// ----------------------
+// -------------------
+// MAIN ROUTE
+// -------------------
 app.get("/auto-match", async (req, res) => {
   try {
     const now = Date.now();
 
-    // cache (15s)
+    // cache 15s
     if (cache && now - cacheTime < 15000) {
       return res.json(cache);
     }
 
-    const events = await getMatches();
-    const match = pickMatch(events);
-    const payload = formatMatch(match);
+    const events = await getAllMatches();
+    const match = selectMatch(events);
+
+    const payload = format(match);
 
     cache = payload;
     cacheTime = now;
@@ -114,17 +117,17 @@ app.get("/auto-match", async (req, res) => {
 
   } catch (err) {
     res.json({
-      home: "—",
-      away: "—",
+      home: "ESPN LIVE",
+      away: "SYSTEM ERROR",
       homeScore: "",
       awayScore: "",
-      status: "ERROR",
+      status: "RETRYING SIGNAL",
       utcDate: new Date().toISOString()
     });
   }
 });
 
-// ----------------------
+// -------------------
 app.listen(3000, () => {
-  console.log("🔥 BROADCAST ENGINE RUNNING: http://localhost:3000");
+  console.log("🔥 ESPN MODE ACTIVE: http://localhost:3000");
 });
