@@ -228,4 +228,6 @@ app.post("/scene", (req, res) => {
 // --------------------
 app.listen(3000, () => {
   console.log("🔥 CW+ CONTROL ROOM ENGINE ACTIVE");
+  
+  console.log("CW+ running on http://localhost:3000");
 });
