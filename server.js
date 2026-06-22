@@ -4,53 +4,71 @@ const cors = require("cors");
 const app = express();
 app.use(cors());
 
-const API_KEY = "99cdd9bb54f544aabc3a8c0d177bbf48";
+const API_KEY = "YOUR_API_FOOTBALL_KEY";
 
-// helper
+// ⚽ Stable fetch
 async function apiFetch(url) {
   const res = await fetch(url, {
-    headers: { "X-Auth-Token": API_KEY }
+    headers: {
+      "x-apisports-key": API_KEY
+    }
   });
   return res.json();
 }
 
 /**
- * GET BEST MATCH (AUTO PICK)
- * Priority: LIVE → TIMED → any
+ * GET LIVE MATCHES
  */
 app.get("/auto-match", async (req, res) => {
   try {
-    const data = await apiFetch("https://api.football-data.org/v4/matches");
+    const data = await apiFetch("https://v3.football.api-sports.io/fixtures?live=all");
 
-    const matches = data.matches;
+    const matches = data.response || [];
 
-    // 1. LIVE match first
- let match =
-  matches.find(m =>
-    m.homeTeam?.name === "Argentina" ||
-    m.awayTeam?.name === "Argentina"
-  ) ||
-  matches.find(m => m.status === "LIVE") ||
-  matches.find(m => m.status === "TIMED") ||
-  matches[0];
+    if (!matches.length) {
+      return res.json({
+        home: "—",
+        away: "—",
+        homeScore: 0,
+        awayScore: 0,
+        status: "NO LIVE MATCH",
+        utcDate: new Date().toISOString()
+      });
+    }
 
-   res.json({
-  id: match.id,
-  home: match.homeTeam?.name || "TBD",
-  away: match.awayTeam?.name || "TBD",
+    // 🧠 Pick match: Argentina first, otherwise first live match
+    let match =
+      matches.find(m =>
+        m.teams.home.name.toLowerCase().includes("argentina") ||
+        m.teams.away.name.toLowerCase().includes("argentina")
+      ) || matches[0];
 
-  homeScore: match.score?.fullTime?.home ?? 0,
-  awayScore: match.score?.fullTime?.away ?? 0,
+    const fixture = match.fixture;
+    const goals = match.goals;
 
-  status: match.status,
-  utcDate: match.utcDate
-});
+    res.json({
+      home: match.teams.home.name,
+      away: match.teams.away.name,
+
+      homeScore: goals.home ?? 0,
+      awayScore: goals.away ?? 0,
+
+      status: match.fixture.status.short,
+      utcDate: fixture.date
+    });
 
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.json({
+      home: "—",
+      away: "—",
+      homeScore: 0,
+      awayScore: 0,
+      status: "ERROR",
+      utcDate: new Date().toISOString()
+    });
   }
 });
 
 app.listen(3000, () => {
-  console.log("🔥 PRO SERVER RUNNING: http://localhost:3000");
+  console.log("🔥 API-Football server running on http://localhost:3000");
 });

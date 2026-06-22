@@ -98,9 +98,9 @@
 <div class="stadium-bg"></div>
 
 <div class="scoreboard">
-  <div class="team" id="home">HOME</div>
+  <div class="team" id="home">—</div>
   <div class="score" id="score">0 - 0</div>
-  <div class="team" id="away">AWAY</div>
+  <div class="team" id="away">—</div>
 </div>
 
 <div class="status">
@@ -111,6 +111,8 @@
 
 <script>
 let lastScore = "";
+let lastValidData = null;
+let isUpdating = false;
 
 /* ⚽ REAL CLOCK BASED ON KICKOFF */
 function updateClock(kickoffTime) {
@@ -119,60 +121,77 @@ function updateClock(kickoffTime) {
 
   if (diff < 0) {
     document.getElementById("clock").innerText = "0'";
-  } 
-  else if (diff <= 90) {
+  } else if (diff <= 90) {
     document.getElementById("clock").innerText = diff + "'";
-  } 
-  else {
+  } else {
     document.getElementById("clock").innerText = "FT";
   }
 }
+
+/* 🎯 APPLY UI SAFELY */
+function applyData(m) {
+  document.getElementById("home").innerText = m.home ?? "—";
+  document.getElementById("away").innerText = m.away ?? "—";
+  document.getElementById("status").innerText = m.status ?? "LOADING";
+
+  const homeScore = (m.homeScore ?? 0);
+  const awayScore = (m.awayScore ?? 0);
+
+  const score = `${homeScore} - ${awayScore}`;
+  document.getElementById("score").innerText = score;
+
+  /* ⚽ GOAL ANIMATION */
+  if (lastScore && lastScore !== score) {
+    const el = document.querySelector(".score");
+    el.style.transform = "scale(1.3)";
+    setTimeout(() => el.style.transform = "scale(1)", 300);
+  }
+
+  lastScore = score;
+
+  /* ⏱️ CLOCK */
+  const kickoff = new Date(m.utcDate);
+
+  if (m.status === "LIVE" || m.status === "IN_PLAY") {
+    updateClock(kickoff);
+  } else if (m.status === "FINISHED") {
+    document.getElementById("clock").innerText = "FT";
+  } else {
+    document.getElementById("clock").innerText = "0'";
+  }
+}
+
+/* 🔄 SAFE FETCH LOOP (NO FLICKER / NO RACE CONDITION) */
 async function loadMatch() {
+  if (isUpdating) return;
+  isUpdating = true;
+
   try {
     const res = await fetch("https://football-backend-2fmw.onrender.com/auto-match");
     const m = await res.json();
 
-    document.getElementById("home").innerText = m.home ?? "—";
-    document.getElementById("away").innerText = m.away ?? "—";
-    document.getElementById("status").innerText = m.status ?? "LOADING";
-
-    const homeScore = (m.homeScore !== undefined && m.homeScore !== null) ? m.homeScore : 0;
-    const awayScore = (m.awayScore !== undefined && m.awayScore !== null) ? m.awayScore : 0;
-
-    const score = `${homeScore} - ${awayScore}`;
-    document.getElementById("score").innerText = score;
-
-    /* ⚽ GOAL ANIMATION */
-    if (lastScore && lastScore !== score) {
-      const el = document.querySelector(".score");
-      el.style.transform = "scale(1.3)";
-
-      setTimeout(() => {
-        el.style.transform = "scale(1)";
-      }, 300);
+    /* ❌ BLOCK INVALID DATA */
+    if (!m || !m.home || !m.away) {
+      if (lastValidData) applyData(lastValidData);
+      isUpdating = false;
+      return;
     }
 
-    lastScore = score;
-
-    /* ⏱️ CLOCK LOGIC */
-    const kickoff = new Date(m.utcDate);
-
-    if (m.status === "LIVE" || m.status === "IN_PLAY") {
-      updateClock(kickoff);
-    } 
-    else if (m.status === "FINISHED") {
-      document.getElementById("clock").innerText = "FT";
-    } 
-    else {
-      document.getElementById("clock").innerText = "0'";
-    }
+    lastValidData = m;
+    applyData(m);
 
   } catch (e) {
     document.getElementById("status").innerText = "OFFLINE";
+
+    if (lastValidData) {
+      applyData(lastValidData);
+    }
   }
+
+  isUpdating = false;
 }
 
-/* 🔄 AUTO REFRESH */
+/* 🚀 START */
 loadMatch();
 setInterval(loadMatch, 5000);
 </script>
