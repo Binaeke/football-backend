@@ -111,13 +111,11 @@
 
 <script>
 let lastScore = "";
-let lastValidData = null;
-let isUpdating = false;
 
-/* ⚽ REAL CLOCK BASED ON KICKOFF */
+/* ⏱️ Match Clock */
 function updateClock(kickoffTime) {
   const now = new Date();
-  let diff = Math.floor((now - kickoffTime) / 60000);
+  const diff = Math.floor((now - kickoffTime) / 60000);
 
   if (diff < 0) {
     document.getElementById("clock").innerText = "0'";
@@ -128,11 +126,11 @@ function updateClock(kickoffTime) {
   }
 }
 
-/* 🎯 APPLY UI SAFELY */
+/* 🎯 Update UI */
 function applyData(m) {
-  document.getElementById("home").innerText = m.home ?? "—";
-  document.getElementById("away").innerText = m.away ?? "—";
-  document.getElementById("status").innerText = m.status ?? "LOADING";
+  document.getElementById("home").innerText = m.home || "—";
+  document.getElementById("away").innerText = m.away || "—";
+  document.getElementById("status").innerText = m.status || "LOADING";
 
   const homeScore = m.homeScore ?? 0;
   const awayScore = m.awayScore ?? 0;
@@ -140,64 +138,52 @@ function applyData(m) {
   const score = `${homeScore} - ${awayScore}`;
   document.getElementById("score").innerText = score;
 
-  /* ⚽ GOAL ANIMATION */
+  /* ⚽ Goal Animation */
   if (lastScore && lastScore !== score) {
     const el = document.querySelector(".score");
+
     el.style.transform = "scale(1.3)";
-    setTimeout(() => el.style.transform = "scale(1)", 300);
+
+    setTimeout(() => {
+      el.style.transform = "scale(1)";
+    }, 300);
   }
 
   lastScore = score;
 
-  /* ⏱️ CLOCK (API-FOOTBALL FIXED STATUS) */
-  const kickoff = new Date(m.utcDate);
-
-  const liveStates = ["1H", "2H", "HT", "LIVE"];
-
-  if (liveStates.includes(m.status)) {
-    updateClock(kickoff);
-  } 
-  else if (m.status === "FT" || m.status === "FINISHED") {
-    document.getElementById("clock").innerText = "FT";
-  } 
-  else {
-    document.getElementById("clock").innerText = "0'";
+  /* ⏱️ Clock */
+  if (m.utcDate) {
+    updateClock(new Date(m.utcDate));
   }
 }
 
-/* 🔄 SAFE FETCH LOOP (ANTI-FLICKER SYSTEM) */
+/* 🔄 Fetch Match */
 async function loadMatch() {
-  if (isUpdating) return;
-  isUpdating = true;
-
   try {
-    const res = await fetch("https://football-backend-2fmw.onrender.com/auto-match");
+    const res = await fetch(
+      "https://football-backend-2fmw.onrender.com/auto-match?t=" + Date.now(),
+      {
+        cache: "no-store"
+      }
+    );
+
     const m = await res.json();
 
-    /* ❌ BLOCK INVALID DATA */
-    if (!m || !m.home || !m.away) {
-      if (lastValidData) applyData(lastValidData);
-      isUpdating = false;
-      return;
-    }
+    if (!m) return;
 
-    lastValidData = m;
     applyData(m);
 
-  } catch (e) {
+  } catch (err) {
+    console.error(err);
     document.getElementById("status").innerText = "OFFLINE";
-
-    if (lastValidData) {
-      applyData(lastValidData);
-    }
   }
-
-  isUpdating = false;
 }
 
-/* 🚀 START */
+/* 🚀 Start */
 loadMatch();
-setInterval(loadMatch, 5000);
+
+/* Refresh every 10 seconds */
+setInterval(loadMatch, 10000);
 </script>
 
 </body>

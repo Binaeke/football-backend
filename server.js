@@ -4,65 +4,60 @@ const cors = require("cors");
 const app = express();
 app.use(cors());
 
-const API_KEY = "1df1eebb1229b56f24ffd0cee4ad12f1";
+const LIVE_URL =
+  "https://api.sofascore.com/api/v1/sport/football/events/live";
 
-// ⚽ Stable fetch
-async function apiFetch(url) {
-  const res = await fetch(url, {
+let cachedMatch = null;
+let lastUpdate = 0;
+
+async function fetchSofascore() {
+  const res = await fetch(LIVE_URL, {
     headers: {
-      "x-apisports-key": API_KEY
+      "User-Agent": "Mozilla/5.0"
     }
   });
+
   return res.json();
 }
 
-/**
- * GET LIVE MATCHES
- */
 app.get("/auto-match", async (req, res) => {
   try {
-    // 1. LIVE matches
-    const liveRes = await apiFetch("https://v3.football.api-sports.io/fixtures?live=all");
-    let matches = liveRes.response || [];
+    const now = Date.now();
 
-    // 2. fallback: today's matches if no live
-    if (!matches.length) {
-      const today = new Date().toISOString().split("T")[0];
-
-      const todayRes = await apiFetch(
-        `https://v3.football.api-sports.io/fixtures?date=${today}`
-      );
-
-      matches = todayRes.response || [];
+    // 🧠 cache (prevents rate issues)
+    if (cachedMatch && now - lastUpdate < 15000) {
+      return res.json(cachedMatch);
     }
 
-    // 3. fallback hardcoded empty safe state
-    if (!matches.length) {
+    const data = await fetchSofascore();
+    const events = data?.events || [];
+
+    if (!events.length) {
       return res.json({
         home: "—",
         away: "—",
         homeScore: 0,
         awayScore: 0,
-        status: "NO MATCH",
+        status: "NO LIVE MATCH",
         utcDate: new Date().toISOString()
       });
     }
 
-    // 4. pick match (Argentina priority)
-    let match =
-      matches.find(m =>
-        m.teams.home.name.toLowerCase().includes("argentina") ||
-        m.teams.away.name.toLowerCase().includes("argentina")
-      ) || matches[0];
+    const match = events[0];
 
-    res.json({
-      home: match.teams.home.name,
-      away: match.teams.away.name,
-      homeScore: match.goals.home ?? 0,
-      awayScore: match.goals.away ?? 0,
-      status: match.fixture.status.short,
-      utcDate: match.fixture.date
-    });
+    const payload = {
+      home: match.homeTeam?.name || "—",
+      away: match.awayTeam?.name || "—",
+      homeScore: match.homeScore?.current ?? 0,
+      awayScore: match.awayScore?.current ?? 0,
+      status: match.status?.type || "LIVE",
+      utcDate: new Date().toISOString()
+    };
+
+    cachedMatch = payload;
+    lastUpdate = now;
+
+    res.json(payload);
 
   } catch (err) {
     res.json({
@@ -77,5 +72,5 @@ app.get("/auto-match", async (req, res) => {
 });
 
 app.listen(3000, () => {
-  console.log("🔥 API-Football server running on http://localhost:3000");
+  console.log("🔥 Sofascore server running on http://localhost:3000");
 });
