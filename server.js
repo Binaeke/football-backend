@@ -6,7 +6,7 @@ app.use(cors());
 
 const LIVE_URL =
   
-  "https://api.sofascore.com/api/v1/sport/football/scheduled-events/2026-06-23";
+  "https://api.sofascore.com/api/v1/sport/football/events/live";
 
 let cachedMatch = null;
 let lastUpdate = 0;
