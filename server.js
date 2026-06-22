@@ -5,20 +5,27 @@ const app = express();
 app.use(cors());
 
 // -------------------
-// SOFASCORE SOURCES
+// SOURCES
 // -------------------
 const LIVE_URL =
   "https://api.sofascore.com/api/v1/sport/football/events/live";
 
-const TODAY_URL =
-  "https://api.sofascore.com/api/v1/sport/football/scheduled-events/2026-06-22";
+// dynamic today URL
+function getTodayURL() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+
+  return `https://api.sofascore.com/api/v1/sport/football/scheduled-events/${yyyy}-${mm}-${dd}`;
+}
 
 // -------------------
 let cache = null;
 let cacheTime = 0;
 
 // -------------------
-// FETCH HELPERS
+// FETCH
 // -------------------
 async function fetchJSON(url) {
   const res = await fetch(url, {
@@ -28,12 +35,12 @@ async function fetchJSON(url) {
 }
 
 // -------------------
-// GET ALL MATCHES
+// GET DATA
 // -------------------
-async function getAllMatches() {
+async function getMatches() {
   const [live, today] = await Promise.all([
     fetchJSON(LIVE_URL),
-    fetchJSON(TODAY_URL)
+    fetchJSON(getTodayURL())
   ]);
 
   return [
@@ -43,85 +50,129 @@ async function getAllMatches() {
 }
 
 // -------------------
-// ESPN MATCH SELECTOR
+// BIG MATCH PRIORITY (ESPN+ FEATURE)
+// -------------------
+const PRIORITY_TEAMS = [
+  "France",
+  "Argentina",
+  "Brazil",
+  "Germany",
+  "England",
+  "Spain",
+  "Portugal"
+];
+
+function teamScore(match) {
+  const home = match.homeTeam?.name || "";
+  const away = match.awayTeam?.name || "";
+
+  let score = 0;
+
+  PRIORITY_TEAMS.forEach(team => {
+    if (home.includes(team) || away.includes(team)) {
+      score += 10;
+    }
+  });
+
+  if (match.status?.type === "inprogress") score += 50;
+  if (match.status?.type === "notstarted") score += 20;
+
+  return score;
+}
+
+// -------------------
+// SELECT MATCH (ESPN+ ENGINE)
 // -------------------
 function selectMatch(events) {
-  const football = events.filter(
-    e => e.sport?.name === "Football"
-  );
+  const football = events.filter(e => e.sport?.name === "Football");
 
   if (!football.length) return null;
 
-  // 🟢 LIVE FIRST
-  const live = football.find(
-    e => e.status?.type === "inprogress"
-  );
-  if (live) return live;
+  // sort by importance
+  football.sort((a, b) => teamScore(b) - teamScore(a));
 
-  // 🟡 TODAY MATCHES
-  const upcoming = football.find(
-    e => e.status?.type === "notstarted"
-  );
-  if (upcoming) return upcoming;
-
-  // 🔵 FALLBACK
   return football[0];
 }
 
 // -------------------
-// FORMAT ESPN RESPONSE
+// BROADCAST CLOCK
+// -------------------
+function getMatchMinute(utcDate) {
+  const start = new Date(utcDate).getTime();
+  const now = Date.now();
+
+  let minutes = Math.floor((now - start) / 60000);
+
+  if (minutes < 0) return "0'";
+  if (minutes <= 45) return minutes + "'";
+  if (minutes <= 90) return minutes + "'";
+  return "90+";
+}
+
+// -------------------
+// FORMAT RESPONSE
 // -------------------
 function format(match) {
   if (!match) {
     return {
-      home: "ESPN LIVE",
-      away: "STANDBY",
+      home: "ESPN+",
+      away: "NO MATCH",
       homeScore: "",
       awayScore: "",
-      status: "NO ACTIVE MATCH",
+      status: "STANDBY",
+      clock: "",
       utcDate: new Date().toISOString()
     };
   }
+
+  const statusMap = {
+    inprogress: "LIVE 🔴",
+    live: "LIVE 🔴",
+    notstarted: "UPCOMING 🟡",
+    finished: "FT ⚪"
+  };
 
   return {
     home: match.homeTeam?.name || "—",
     away: match.awayTeam?.name || "—",
     homeScore: match.homeScore?.current ?? 0,
     awayScore: match.awayScore?.current ?? 0,
-    status: match.status?.type || "UNKNOWN",
+    status: statusMap[match.status?.type] || "UNKNOWN",
+    clock:
+      match.status?.type === "inprogress"
+        ? getMatchMinute(match.utcDate)
+        : "",
     utcDate: match.utcDate || new Date().toISOString()
   };
 }
 
 // -------------------
-// MAIN ROUTE
+// API
 // -------------------
 app.get("/auto-match", async (req, res) => {
   try {
     const now = Date.now();
 
-    // cache 15s
-    if (cache && now - cacheTime < 15000) {
+    if (cache && now - cacheTime < 10000) {
       return res.json(cache);
     }
 
-    const events = await getAllMatches();
+    const events = await getMatches();
     const match = selectMatch(events);
-
     const payload = format(match);
 
     cache = payload;
     cacheTime = now;
 
     res.json(payload);
-
   } catch (err) {
     res.json({
-      home: "ESPN LIVE",
-      away: "SYSTEM ERROR",
+      home: "ESPN+",
+      away: "ERROR",
       homeScore: "",
       awayScore: "",
-      status: "RETRYING SIGNAL",
+      status: "RECONNECTING",
+      clock: "",
       utcDate: new Date().toISOString()
     });
   }
@@ -129,5 +180,5 @@ app.get("/auto-match", async (req, res) => {
 
 // -------------------
 app.listen(3000, () => {
-  console.log("🔥 ESPN MODE ACTIVE: http://localhost:3000");
+  console.log("🔥 ESPN+ BROADCAST ENGINE RUNNING");
 });
