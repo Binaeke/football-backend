@@ -111,36 +111,38 @@
 
 <script>
 let lastScore = "";
-let matchStartTime = null;
-let clockInterval = null;
 
-function startClock() {
-  if (clockInterval) return;
+/* ⚽ REAL CLOCK BASED ON KICKOFF */
+function updateClock(kickoffTime) {
+  const now = new Date();
+  let diff = Math.floor((now - kickoffTime) / 60000);
 
-  matchStartTime = Date.now();
-
-  clockInterval = setInterval(() => {
-    const now = Date.now();
-    const diff = Math.floor((now - matchStartTime) / 1000 / 60);
-
+  if (diff < 0) {
+    document.getElementById("clock").innerText = "0'";
+  } 
+  else if (diff <= 90) {
     document.getElementById("clock").innerText = diff + "'";
-  }, 1000);
+  } 
+  else {
+    document.getElementById("clock").innerText = "FT";
+  }
 }
-
 async function loadMatch() {
   try {
     const res = await fetch("https://football-backend-2fmw.onrender.com/auto-match");
     const m = await res.json();
 
-    document.getElementById("home").innerText = m.home;
-    document.getElementById("away").innerText = m.away;
+    document.getElementById("home").innerText = m.home ?? "—";
+    document.getElementById("away").innerText = m.away ?? "—";
+    document.getElementById("status").innerText = m.status ?? "LOADING";
 
-    const score = `${m.homeScore ?? 0} - ${m.awayScore ?? 0}`;
+    const homeScore = (m.homeScore !== undefined && m.homeScore !== null) ? m.homeScore : 0;
+    const awayScore = (m.awayScore !== undefined && m.awayScore !== null) ? m.awayScore : 0;
+
+    const score = `${homeScore} - ${awayScore}`;
     document.getElementById("score").innerText = score;
 
-    document.getElementById("status").innerText = m.status;
-
-    // ⚽ goal animation
+    /* ⚽ GOAL ANIMATION */
     if (lastScore && lastScore !== score) {
       const el = document.querySelector(".score");
       el.style.transform = "scale(1.3)";
@@ -152,14 +154,17 @@ async function loadMatch() {
 
     lastScore = score;
 
-    // ⏱️ CLOCK CONTROL (FIXED)
-    if (m.status === "IN_PLAY") {
-      startClock();
-    } else {
-      document.getElementById("status").innerText = m.status;
+    /* ⏱️ CLOCK LOGIC */
+    const kickoff = new Date(m.utcDate);
 
-      clearInterval(clockInterval);
-      clockInterval = null;
+    if (m.status === "LIVE" || m.status === "IN_PLAY") {
+      updateClock(kickoff);
+    } 
+    else if (m.status === "FINISHED") {
+      document.getElementById("clock").innerText = "FT";
+    } 
+    else {
+      document.getElementById("clock").innerText = "0'";
     }
 
   } catch (e) {
@@ -167,6 +172,7 @@ async function loadMatch() {
   }
 }
 
+/* 🔄 AUTO REFRESH */
 loadMatch();
 setInterval(loadMatch, 5000);
 </script>
