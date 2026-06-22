@@ -38,13 +38,17 @@ app.get("/auto-match", async (req, res) => {
       return res.json({ error: "No matches found" });
     }
 
-    res.json({
-      id: match.id,
-      home: match.homeTeam.name,
-      away: match.awayTeam.name,
-      status: match.status,
-      score: match.score?.fullTime || { home: null, away: null }
-    });
+   res.json({
+  id: match.id,
+  home: match.homeTeam?.name || "TBD",
+  away: match.awayTeam?.name || "TBD",
+
+  homeScore: match.score?.fullTime?.home ?? 0,
+  awayScore: match.score?.fullTime?.away ?? 0,
+
+  status: match.status,
+  utcDate: match.utcDate
+});
 
   } catch (err) {
     res.status(500).json({ error: err.message });
